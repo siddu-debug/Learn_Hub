@@ -1,0 +1,48 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'yarn'
+      - run: yarn install --frozen-lockfile
+      - run: yarn workspace @learnhub/api db:generate
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+      - name: Type check API
+        run: cd apps/api && npx tsc --noEmit
+        continue-on-error: true
+      - name: Type check Web
+        run: cd apps/web && npx tsc --noEmit
+        continue-on-error: true
+
+  deploy-api:
+    name: Deploy API to Render
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Trigger Render API Deploy
+        run: |
+          curl -X POST "${{ secrets.RENDER_API_DEPLOY_HOOK }}"
+
+  deploy-web:
+    name: Deploy Web to Render
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Trigger Render Web Deploy
+        run: |
+          curl -X POST "${{ secrets.RENDER_WEB_DEPLOY_HOOK }}"

@@ -1,0 +1,20 @@
+{
+  "name": "learnhub",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"yarn workspace @learnhub/api dev\" \"yarn workspace @learnhub/web dev\"",
+    "build": "yarn workspace @learnhub/api build && yarn workspace @learnhub/web build",
+    "db:migrate": "yarn workspace @learnhub/api db:migrate",
+    "db:seed": "yarn workspace @learnhub/api db:seed",
+    "db:studio": "yarn workspace @learnhub/api db:studio",
+    "lint": "concurrently \"yarn workspace @learnhub/api lint\" \"yarn workspace @learnhub/web lint\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  }
+}

@@ -1,0 +1,367 @@
+// prisma/schema.prisma
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector")]
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum CourseStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum DifficultyLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  passwordHash  String?
+  googleId      String?   @unique
+  avatarUrl     String?
+  role          Role      @default(USER)
+  isActive      Boolean   @default(true)
+  emailVerified Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  profile       Profile?
+  courses       Course[]         @relation("CourseCreator")
+  forks         Fork[]
+  bookmarks     Bookmark[]
+  likes         Like[]
+  progress      Progress[]
+  chatSessions  ChatSession[]
+  quizAttempts  QuizAttempt[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+model Profile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  bio         String?
+  website     String?
+  github      String?
+  twitter     String?
+  location    String?
+  headline    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("profiles")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model Course {
+  id              String          @id @default(cuid())
+  title           String
+  description     String?
+  coverImageUrl   String?
+  status          CourseStatus    @default(DRAFT)
+  difficulty      DifficultyLevel @default(BEGINNER)
+  estimatedHours  Float?
+  isForked        Boolean         @default(false)
+  originalCourseId String?
+  publishedAt     DateTime?
+  creatorId       String
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  creator         User            @relation("CourseCreator", fields: [creatorId], references: [id])
+  originalCourse  Course?         @relation("CourseForks", fields: [originalCourseId], references: [id])
+  forks           Course[]        @relation("CourseForks")
+  chapters        Chapter[]
+  tags            CourseTag[]
+  versions        CourseVersion[]
+  forkRecords     Fork[]
+  bookmarks       Bookmark[]
+  likes           Like[]
+  progress        Progress[]
+  chatSessions    ChatSession[]
+  embeddings      CourseEmbedding[]
+
+  @@map("courses")
+}
+
+model Tag {
+  id        String      @id @default(cuid())
+  name      String      @unique
+  slug      String      @unique
+  createdAt DateTime    @default(now())
+
+  courses   CourseTag[]
+
+  @@map("tags")
+}
+
+model CourseTag {
+  courseId  String
+  tagId     String
+
+  course    Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([courseId, tagId])
+  @@map("course_tags")
+}
+
+model Chapter {
+  id          String   @id @default(cuid())
+  courseId    String
+  title       String
+  description String?
+  order       Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons     Lesson[]
+
+  @@map("chapters")
+}
+
+model Lesson {
+  id          String   @id @default(cuid())
+  chapterId   String
+  title       String
+  content     String?  @db.Text
+  videoUrl    String?
+  order       Int
+  duration    Int?     // minutes
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  chapter     Chapter          @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  quizzes     Quiz[]
+  completions LessonCompletion[]
+
+  @@map("lessons")
+}
+
+model Quiz {
+  id          String        @id @default(cuid())
+  lessonId    String?
+  courseId    String?
+  title       String
+  description String?
+  passMark    Int           @default(70)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  lesson      Lesson?       @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  questions   Question[]
+  attempts    QuizAttempt[]
+
+  @@map("quizzes")
+}
+
+model Question {
+  id            String    @id @default(cuid())
+  quizId        String
+  text          String    @db.Text
+  explanation   String?   @db.Text
+  order         Int
+  createdAt     DateTime  @default(now())
+
+  quiz          Quiz      @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  answers       Answer[]
+  attemptAnswers AttemptAnswer[]
+
+  @@map("questions")
+}
+
+model Answer {
+  id          String   @id @default(cuid())
+  questionId  String
+  text        String
+  isCorrect   Boolean  @default(false)
+  order       Int
+  createdAt   DateTime @default(now())
+
+  question    Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@map("answers")
+}
+
+model QuizAttempt {
+  id          String          @id @default(cuid())
+  quizId      String
+  userId      String
+  score       Int
+  passed      Boolean
+  completedAt DateTime        @default(now())
+
+  quiz        Quiz            @relation(fields: [quizId], references: [id])
+  user        User            @relation(fields: [userId], references: [id])
+  answers     AttemptAnswer[]
+
+  @@map("quiz_attempts")
+}
+
+model AttemptAnswer {
+  id          String      @id @default(cuid())
+  attemptId   String
+  questionId  String
+  answerId    String
+  isCorrect   Boolean
+
+  attempt     QuizAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question    Question    @relation(fields: [questionId], references: [id])
+
+  @@map("attempt_answers")
+}
+
+model CourseVersion {
+  id          String   @id @default(cuid())
+  courseId    String
+  version     String
+  snapshot    Json
+  changelog   String?
+  createdBy   String
+  createdAt   DateTime @default(now())
+
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@map("course_versions")
+}
+
+model Fork {
+  id              String   @id @default(cuid())
+  userId          String
+  originalCourseId String
+  forkedCourseId  String
+  createdAt       DateTime @default(now())
+
+  user            User     @relation(fields: [userId], references: [id])
+  originalCourse  Course   @relation(fields: [originalCourseId], references: [id])
+
+  @@map("forks")
+}
+
+model ChatSession {
+  id        String        @id @default(cuid())
+  userId    String
+  courseId  String
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  user      User          @relation(fields: [userId], references: [id])
+  course    Course        @relation(fields: [courseId], references: [id])
+  messages  ChatMessage[]
+
+  @@map("chat_sessions")
+}
+
+model ChatMessage {
+  id          String      @id @default(cuid())
+  sessionId   String
+  role        String      // 'user' | 'assistant'
+  content     String      @db.Text
+  citations   Json?
+  createdAt   DateTime    @default(now())
+
+  session     ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("chat_messages")
+}
+
+model Progress {
+  id              String   @id @default(cuid())
+  userId          String
+  courseId        String
+  completedLessons Int     @default(0)
+  totalLessons    Int      @default(0)
+  percentage      Float    @default(0)
+  lastAccessedAt  DateTime @default(now())
+  completedAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id])
+  course          Course   @relation(fields: [courseId], references: [id])
+
+  @@unique([userId, courseId])
+  @@map("progress")
+}
+
+model LessonCompletion {
+  id          String   @id @default(cuid())
+  userId      String
+  lessonId    String
+  completedAt DateTime @default(now())
+
+  lesson      Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, lessonId])
+  @@map("lesson_completions")
+}
+
+model Bookmark {
+  id        String   @id @default(cuid())
+  userId    String
+  courseId  String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id])
+  course    Course   @relation(fields: [courseId], references: [id])
+
+  @@unique([userId, courseId])
+  @@map("bookmarks")
+}
+
+model Like {
+  id        String   @id @default(cuid())
+  userId    String
+  courseId  String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id])
+  course    Course   @relation(fields: [courseId], references: [id])
+
+  @@unique([userId, courseId])
+  @@map("likes")
+}
+
+model CourseEmbedding {
+  id          String                      @id @default(cuid())
+  courseId    String
+  lessonId    String?
+  content     String                      @db.Text
+  embedding   Unsupported("vector(384)")?
+  metadata    Json?
+  createdAt   DateTime                    @default(now())
+
+  course      Course                      @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@map("course_embeddings")
+}
